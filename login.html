@@ -1,0 +1,171 @@
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>To-do list</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<link rel="stylesheet" href="./dist/bootstrap/dist/css/bootstrap-glyph.css">
+<link rel="stylesheet" href="./dist/bootstrap/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="./dist/main/css/main.css">
+
+<style>
+    body {       
+        background-color: #f5f5f5;
+    }
+    #app {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--theme-color)
+    }    
+
+    .super-large-icon{
+        font-size: 6rem;
+        padding-bottom: 1.5rem;
+    }
+
+    .banner{
+        padding: 4rem 0 2rem;
+        width: 100%;
+        background-color: var(--theme-color);
+        color: white;
+    }
+    .fade-enter-active {
+        transition:  .3s;
+    }
+    .fade-leave-active {
+        transition: .3s
+    }
+    .fade-enter, .fade-leave-to {
+        transform: translateX(10px);
+        opacity: 0;
+    }
+    .notification{
+        font-size: 0.9rem;
+        height: 1rem;
+    }
+</style>
+
+</head>
+
+<body>
+    <div id="app"  v-cloak>
+        <div class="text-center banner mb-5">           
+            <span class="glyphicon glyphicon-check super-large-icon"></span>
+            <h1 class="h3 mb-3 font-weight-normal brand-text">待办清单</h1>
+        </div>
+        <div class="form-signin">
+            <div class="pb-4">
+                <label class="mb-1"><span class="glyphicon glyphicon-text-background mr-3"></span>用户名</label>
+                <input type="text" v-model="name" class="form-control" @focus="focus" placeholder="请输入用户名">      
+            </div>
+            <div class="pb-2">
+                <label class="mb-1"><span class="glyphicon glyphicon-asterisk mr-3"></span>密码</label>
+                <input type="password"  v-model="password" @focus="focus"  class="form-control" placeholder="请输入密码">
+            </div>
+            <div class="text-danger pl-2 notification">{{ noti }}</div>
+            <hr class="my-4">
+            <transition name="fade" mode="out-in">
+                <div v-if="isLogin" key="login">
+                    <button class="btn btn-primary btn-lg btn-block" @click="login">登录</button>
+                    <p class="mt-5 mb-3 text-muted text-center">或者 <a href="#" @click="toggle">是新用户？</a></p>
+                </div>
+                <div v-else key="register">             
+                    <button class="btn btn-primary btn-lg btn-block" @click="register" >注册</button>
+                    <p class="mt-5 mb-3 text-muted text-center">或者 <a href="#" @click="toggle">已经注册过？</a></p>
+                </div>
+            </transition>
+        </div>
+    </div>
+
+	<script src="./dist/jquery/dist/jquery.min.js"></script>
+	<script src="./dist/popper.js/dist/umd/popper.min.js"></script>
+	<script src="./dist/bootstrap/dist/js/bootstrap.min.js"></script>
+    <script src="./dist/vue/dist/vue.min.js"></script>
+    <script>
+    
+    let user,config,list = {}
+
+    function syncData(url,callback){
+			let _lastSync = config.lastSync
+			config.lastSync = new Date().getTime()
+			$.post(url,{name: user.name, data: JSON.stringify({user,config,lists})}, data=>{
+				if(data.state==='success'){ 
+					callback(false)
+				} else {
+					config.lastSync = _lastSync
+					callback(true)
+				}
+			})
+		}
+
+    let vm = new Vue({
+        el: '#app',
+        data:{
+            isLogin: true,
+            name: '',
+            password: '',
+            noti: ''
+        },
+        mounted(){
+            user = localStorage['todo-list-user']
+            if(user){ 
+                user = JSON.parse(user)          
+                this.name = user.name
+            }
+            if(localStorage.hasOwnProperty('todo-list-lists')){
+                config = JSON.parse(localStorage['todo-list-config'])
+                lists = JSON.parse(localStorage['todo-list-lists'])
+                localStorage.removeItem('todo-list-config')
+                localStorage.removeItem('todo-list-lists')
+                syncData('/save',err=>{console.error(err)})
+            }
+        },
+        methods:{
+            toggle(){
+                this.isLogin = !this.isLogin
+                this.noti = ''
+                this.password = ''
+            },
+            focus(){
+                this.noti = ''
+            },
+            login(){
+                $.post('/login',{name:this.name,password:this.password}, data=>{
+                    if(data.state==='success'){ 
+                        if(data.data){
+                            localStorage['todo-list-config'] = JSON.stringify(data.data.config) 
+                            localStorage['todo-list-lists'] = JSON.stringify(data.data.lists) 
+                        }
+                        localStorage['todo-list-user'] = JSON.stringify({name: this.name})
+                        window.location.replace('/')
+                    } else{ 
+                        if(data.mismatch === 'password')
+                            this.noti = '密码输入错误'
+                        else
+                            this.noti = '用户名不存在'                               
+                        this.password = ''
+                    }
+                })
+            },
+            register(){
+                $.post('/register',{name:this.name,password:this.password}, data=>{
+                    if(data.state==='success') { 
+                        localStorage['todo-list-user'] = JSON.stringify({name: this.name})
+                        window.location.replace('/')
+                    } else{ 
+                        this.noti = '用户名已存在'                               
+                        this.password = ''
+                    }
+                })
+            }
+        }
+    })
+    </script>
+</body>
+</html> 

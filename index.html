@@ -1,0 +1,611 @@
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>To-do list</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<link rel="stylesheet" href="./dist/bootstrap/dist/css/bootstrap-glyph.css">
+	<link rel="stylesheet" href="./dist/bootstrap/dist/css/bootstrap.min.css">
+	<link rel="stylesheet" href="./dist/main/css/main.css">
+</head>
+
+<body>
+	<div id="app"  v-cloak :style="rootStyle">
+		<nav class="navbar fixed-top flex-md-nowrap shadow p-0">
+			<a class="navbar-nav home-left pr-0">
+				<div class="brand">
+					<div class="logo d-none d-md-flex">
+						<span class="glyphicon glyphicon-check"></span>
+					</div>
+					<div class="logo d-flex d-md-none" :class="role('nav')?'':'logo-back'" @click="pageBack">
+						<span class="glyphicon" :class="role('nav')?'glyphicon-check':'glyphicon-chevron-left'"></span>
+					</div>
+					待办清单
+				</div>
+			</a>
+			<div class="navbar-nav function-bar pr-0">
+				<div class="b-icon setting-icon">
+					<span class="glyphicon glyphicon-cog"></span>
+					<div class="modal-bar">
+						<ul class="nav flex-column ">
+							<li class="setting-section">
+								<div class="setting-title">设置主题色</div>
+								<div class="swatches-wrapper">
+									<input type="text" v-model="config.color" spellcheck="false" class="form-control my-2" :class="colorText">
+									<swatches v-model="config.color" inline colors="material-dark" ></swatches>
+								</div>
+							</li>
+							<li class="setting-section split-line">
+								<div class="setting-title">其他设置</div>
+							</li>
+							<li class="setting-section hor">								
+								<span>隐藏已完成任务</span>
+								<toggle-button v-model="config.hideComplete" :sync="true" class="mb-0" color="#28a745"></toggle-button>
+							</li>
+							<li class="setting-section hor">								
+								<span>使用距离天数表示</span>
+								<toggle-button v-model="config.dayDiff" class="mb-0" color="#28a745"></toggle-button>
+							</li>
+							<li class="setting-section hor">								
+								<span>使用本地存储: {{ config.storageSize }}</span>							
+								<button class="btn btn-sm btn-outline-primary ifix" @click="save">
+									<span class="glyphicon glyphicon-floppy-disk pr-2"></span>
+									立即保存
+								</button>
+							</li>
+						</ul>
+					</div>
+				</div>
+				<div class="b-icon user-icon" id="user-icon">
+					<div class="icon-bar icen">
+						<h3>{{user.name[0]}}</h3>
+					</div>
+					<div class="modal-bar">
+						<div class="user-bar-banner">
+							<div class="icon-bar icen"><h1>{{user.name[0]}}</h1></div>
+							<div class="user-name">{{ user.name }}</div>
+						</div>
+						<div class="user-form">
+							<div class="sync-state">
+								{{ syncText }}
+							</div>
+							<button class="btn btn-outline-primary btn-block mt-4" @click="sync">
+								<span class="glyphicon glyphicon-cloud pr-2"></span>
+								同步
+							</button>
+						</div>
+						<div class="logout-bar clearfix">
+							<button class="btn btn-danger logout" @click="logout">注销</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="w-100">	
+				<div class="icon-placer">					
+					<div class="logo"><span class="glyphicon glyphicon-search"></span></div>
+				</div>
+				<input type="text" class="form-control search-box" :value="searchText" 
+					   @input="search($event.target.value)" @keyup.enter="e=>e.target.blur()" placeholder="在记录中搜索">
+			</div>
+		</nav>
+		
+		<div class="main-container" >
+			<div class="row h-100 m-row">
+				<nav class="col-12 d-none home-left d-md-block sidebar" :role="role('nav')">
+					<h6 class="sidebar-heading mt-2 hor">快速</h6>
+					<ul class="nav flex-column">
+						<li is="list-row" :list="todayList" @click="selectList('today')" :active="selected(todayList)"></li>
+						<li is="list-row" :list="allList"   @click="selectList('all')"   :active="selected(allList)"></li>
+					</ul>
+					<h6 class="sidebar-heading pb-0 hor">
+						清单 
+						<div class="b-icon new-list-icon" @click="toEditList()">
+							<span class="glyphicon glyphicon-plus"></span>
+						</div>
+					</h6>
+
+					<ul class="nav flex-column">				
+						<li is="list-row" v-for="list in lists" 
+							:list="list" @click="selectList(list)" :active="selected(list)"></li>
+					</ul>
+
+				</nav>
+
+				<div class="d-none d-md-block  list-contents" :role="role('page')">
+					<edit-list v-show="submain==='edit-list'" @submit="finishEditList" @mod-list="modifyList"
+							   :data="listEdit.copy" :is-new="!listEdit.source" :fixed="listEdit.copy.uneditable"></edit-list>
+					<edit-task v-show="submain==='edit-task'" @submit="finishEditTask" @delete="deleteTask"
+							   :lists="lists" 		 :data="taskEdit.copy" 	 :is-new="!taskEdit.source"></edit-task>
+					<task-list v-show="submain==='task-list'" @edit-list="toEditList" @edit-task="toEditTask"  ref="taskList"
+							   :list="currentList"   :config="config"></task-list>
+					
+					<div class="b-icon d-none d-md-flex page-back-icon" v-if="submain!=='task-list'" @click="pageBack">
+						<span class="glyphicon glyphicon-chevron-left"></span>						
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<template id="edit-list">
+		<div class="bg-light list-contents">
+			<div class="large-banner hl">
+				<h1 class="icen" v-if="isNew">
+					<span class="glyphicon glyphicon-plus-sign pr-4"></span>
+					<span>创建新的列表</span>
+				</h1>	
+				<h1 class="icen" v-else>
+					<span class="glyphicon glyphicon-edit pr-4"></span>
+					<span>编辑列表</span>
+				</h1>		
+				
+				<div class="delete-box ifix">
+					<div class="b-icon delete-btn"  v-if="!isNew" @click="$emit('mod-list','tick-all')">
+						<span class="glyphicon glyphicon-check pr-3"></span>全部标记为已完成          
+					</div>
+					<div class="b-icon delete-btn"  v-if="!isNew&&!data.incompleteOnly" @click="$emit('mod-list','clear')">
+						<span class="glyphicon glyphicon-minus-sign pr-3"></span>清除已完成          
+					</div>
+					<div class="b-icon delete-btn delete-btn-danger"  v-if="!isNew&&!fixed" @click="$emit('mod-list','delete')" >
+						<span class="glyphicon glyphicon-trash pr-3"></span>删除列表         
+					</div>
+				</div>		
+			</div>
+			
+			<div class="form-edit">
+				<div class="pb-4">
+					<label class="mb-1"><span class="glyphicon glyphicon-text-background mr-3"></span>列表名称</label>
+					<input type="text" v-model="data.name" class="form-control" :disabled="fixed">
+				</div>
+				<div class="pb-4">
+					<label class="mb-1"><span class="glyphicon glyphicon-tag mr-3"></span>描述</label>
+					<textarea v-model="data.description"  class="form-control" :disabled="fixed"></textarea>
+				</div>
+				<template  v-if="!fixed">
+					<hr class="my-4">
+					<button class="btn btn-primary btn-lg btn-block" @click="$emit('submit',data)" >保存</button>
+				</template>
+			</div>
+		</div>
+	</template>
+
+	<template id="edit-task">
+		<div class="bg-light list-contents">
+			<div class="large-banner hl">
+				<h1 class="icen" v-if="isNew">
+					<span class="glyphicon glyphicon-plus-sign pr-4"></span>
+					<span>创建新的任务</span>
+				</h1>				
+				<h1 class="icen" v-else>
+					<span class="glyphicon glyphicon-edit pr-4"></span>
+					<span>编辑任务</span>
+				</h1>
+
+				<div class="delete-box ifix">
+					<div class="b-icon delete-btn delete-btn-danger"  v-if="!isNew" @click="$emit('delete')" >
+						<span class="glyphicon glyphicon-trash pr-3"></span>删除任务         
+					</div>
+				</div>		
+			</div>
+			<div class="form-edit">
+				<div class="pb-4">  
+					<label class="mb-1"><span class="glyphicon glyphicon-th-list mr-3"></span>所属列表</label>
+					<div class="btn-group w-100">  
+						<button class="btn btn-default dropdown-toggle btn-block hor" data-toggle="dropdown">
+							<div class="pl-2">
+								<span class="glyphicon mr-3" :class="iconClass(selected.icon)"></span>
+								{{selected.name}}
+							</div>
+						</button>  
+						<div class="dropdown-menu" >
+							<div class="dropdown-item" v-for="list in lists" @click="selected = list">
+								<span class="glyphicon mr-3" :class="iconClass(list.icon)"></span>{{list.name}}
+							</div>
+						</div>  
+					</div> 
+				</div>
+				<div class="pb-4">
+					<label class="mb-1"><span class="glyphicon glyphicon-text-background mr-3"></span>任务名称</label>
+					<input type="text" v-model="data.data.name" class="form-control">
+				</div>
+				<div class="pb-4 hor">
+					<div class="half pr-2">
+						<label class="mb-1"><span class="glyphicon glyphicon-calendar mr-3"></span>任务日期</label>
+						<input type="date" v-model="data.data.date"  class="form-control">
+					</div>
+					<div class="half pl-2">
+						<label class="mb-1"><span class="glyphicon glyphicon-flag mr-3"></span>优先等级</label>	
+						<div class="btn-group w-100">  
+							<button class="btn btn-default dropdown-toggle btn-block hor" data-toggle="dropdown">
+								<div v-if="data.data.level>=10" class="pl-2">
+									<span class="badge badge-danger select-badge">紧急</span> 紧急事件
+								</div>
+								<div v-else-if="data.data.level>=5" class="pl-2">
+									<span class="badge badge-warning select-badge">重要</span> 重要事件
+								</div>
+								<div v-else class="pl-2">
+									<span class="badge badge-dark select-badge">一般</span> 一般事件
+								</div>
+							</button>  
+							<div class="dropdown-menu">
+								<div class="dropdown-item" @click="data.data.level=10" >
+									<span class="badge badge-danger select-badge">紧急</span> 紧急事件
+								</div>
+								<div class="dropdown-item" @click="data.data.level=5" >
+									<span class="badge badge-warning select-badge">重要</span> 重要事件
+								</div>								
+								<div class="dropdown-item" @click="data.data.level=0">
+									<span class="badge badge-dark select-badge">一般</span> 一般事件
+								</div>
+							</div>
+						</div>
+					</div>				
+				</div>					
+				<div class="hor">
+					<label class="mb-1"><span class="glyphicon glyphicon-hourglass mr-3"></span>完成情况</label>
+					<toggle-button v-model="data.data.complete" :sync="true" class="mb-0" color="#28a745"></toggle-button>
+				</div>	
+				<hr class="my-4">
+				<button class="btn btn-primary btn-lg btn-block" @click="$emit('submit',data,selected)">保存</button>
+			</div>
+		</div>
+	</template>
+
+
+
+	<script src="./dist/jquery/dist/jquery.min.js"></script>
+	<script src="./dist/popper.js/dist/umd/popper.min.js"></script>
+	<script src="./dist/bootstrap/dist/js/bootstrap.min.js"></script>
+	<script src="./dist/vue/dist/vue.min.js"></script>
+	<script src="./dist/main/js/bundle.js"></script>
+	
+	<script>
+		Vue.component('edit-task',{
+			template: '#edit-task',
+			props: ['data','isNew','lists'],
+			watch:{
+				data(){this.selected = this.data.from}
+			},
+			data(){return {selected: {}}},
+			methods:{
+				iconClass
+			},
+		})	
+		Vue.component('edit-list',{
+			template: '#edit-list',
+			props: ['data','isNew','fixed'],
+		})	
+	</script>
+
+	<script>
+		let user = {
+			name: '用户名',
+		}
+		let config = {
+			color: '#2d4459',
+			hideComplete: false,
+			dayDiff: false,
+			storageSize: '0 B',
+			taskIdMax: 11,
+			lastSync: 0,
+		};
+		let lists = [{
+			name: '未归类任务',
+			icon: 'list-alt',
+			uneditable: true,
+			tasks: [
+				{data: {id: 0, name: '示例任务 - 准备考试', date: '2018-06-24' ,complete: true,  level: 10}},
+				{data: {id: 1, name: '示例任务 - 考试'  , date: '2018-06-25' ,complete: true,  level: 6}},
+				{data: {id: 2, name: '示例任务 - 做作业', date: '2018-06-27' ,complete: true,  level: 0}},
+				{data: {id: 3, name: '示例任务 - 考试'  , date: '2018-06-28' ,complete: true,  level: 6}},
+				{data: {id: 4, name: '示例任务 - 准备wet考试', date: '2018-06-28' ,complete: false,  level: 10}},
+				{data: {id: 5, name: '示例任务 - 准备web考试', date: '2018-06-29' ,complete: false,  level: 0}},
+				{data: {id: 6, name: '示例任务 - 任务',	date: '2019-10-03' ,complete: false,  level: 0}},
+			]
+		},{
+			name: '示例列表 - Web前端',
+			description: 'Web任务',
+			tasks: [
+				{data: {id: 7, name:'示例任务 - 关键字1' , date: '2018-06-27',complete: true ,  level: 0}},
+				{data: {id: 8, name:'示例任务 - 关键字12', date: '2018-06-28',complete: false,  level: 6}},
+				{data: {id: 9, name:'示例任务 - 关键字a' , date: '2018-06-29',complete: false,  level: 0}},
+				{data: {id: 10, name:'示例任务 - 关键字c', date: '2018-06-30',complete: false,  level: 0}},
+				{data: {id: 11, name:'示例任务 - 关键字e', date: '2018-08-02',complete: false , level: 10}},
+			]
+		}]
+		let saveMap = [
+			{name: 'todo-list-user',   object: user, strict: true},
+			{name: 'todo-list-config', object: config, strict: true},
+			{name: 'todo-list-lists',  object: lists}
+		];
+		let toSave = true
+		let storageSize = loadObject(saveMap); 
+		config.storageSize = getSizeText(storageSize);
+		window.onbeforeunload = ()=>{
+			if(toSave) saveObject(saveMap);
+		}; 
+
+		function appendTask(list,appendArray,filter){
+			if(filter){
+				list.tasks.forEach(task=>{
+					if(filter(task.data)) appendArray.push({data:task.data,from:list})
+				})
+			} else {			
+				list.tasks.forEach(task=>{
+					appendArray.push({data:task.data,from:list})
+				})	
+			}
+		}
+
+		function deleteTask(data,list){
+			let index = -1
+			for(let i in list.tasks)
+				if(list.tasks[i].data.id === data.id){
+					index = i
+					break
+				}
+			if(index === -1) return false
+			list.tasks.splice(index,1)
+		}
+		function addTask(data,list){
+			list.tasks.push({data})
+		}
+		function moveTask(data,from,to){
+			if(from===to) return
+			deleteTask(data,from)
+			addTask(data,to)
+		}
+
+		function removeItem(list,condition){
+			for(let i=0; i<list.length; ){
+				if(condition(list[i])) list.splice(i,1)
+				else i++
+			}
+		}
+
+		function syncData(url,callback){
+			let _lastSync = config.lastSync
+			config.lastSync = new Date().getTime()
+			$.post(url,{name: user.name, data: JSON.stringify({user,config,lists})}, data=>{
+				if(data.state==='success'){ 
+					callback(false)
+				} else {
+					config.lastSync = _lastSync
+					callback(true)
+				}
+			})
+		}
+
+
+
+
+		let vm = new Vue({
+			el: '#app',
+			mounted(){				
+				$('#user-icon').mouseenter(this.refreshSyncText)
+				this.selectList('today')
+				this.searchTimer = new Timer(250, this.searchImmediately)
+			},
+			data: {user,config,lists,
+				searchText: '',
+				searchTasks: [],
+				curList: {},
+				listEdit: {copy:{}, source:{}},
+				taskEdit: {copy:{data:{},from:{}}, source:{}},
+				history: [],
+				main: 'nav',
+				submain: 'task-list',
+				syncText: ''
+			}, 
+			methods:{
+				save(){
+					this.config.storageSize = getSizeText(saveObject(saveMap))
+				},
+				logout(){
+					syncData('/logout', err=>{
+						if(!err){
+							removeObject(saveMap.slice(1))
+							toSave = false
+							window.location.replace('/')
+						}else this.syncText = '由于未知的原因没有注销成功'
+					})
+				},
+				sync(){
+					syncData('/save', err=>{
+						if(!err) this.syncText = '同步成功！'
+						else this.syncText = '同步时出现问题'
+					})
+				},
+				refreshSyncText(){
+					this.syncText = '上次同步：' + getTimespanText(this.config.lastSync)
+				},
+				pageBack(){
+					let {main, submain} = this.history.pop()
+					this.main = main
+					this.submain = submain
+				},
+				role(name){
+					if(name === this.main) return 'main' 
+					return ''
+				},
+				refreshList(){
+					this.$refs.taskList.refreshList()
+				},
+				toEditList(list){
+					if(list) this.listEdit.copy = {
+						name: list.name, description: list.description,
+						uneditable: list.uneditable, incompleteOnly: list.incompleteOnly}
+					else 	 this.listEdit.copy = {name: '', description: '', tasks: []}
+					this.listEdit.source = list
+					this.jumpto('page','edit-list')
+				},
+				finishEditList(list){
+					if(this.listEdit.source) Object.assign(this.listEdit.source,list)
+					else this.lists.push(list)
+					this.pageBack()
+				},
+				modifyList(mode){
+					if(mode==='tick-all'){
+						this.listEdit.source.tasks.forEach(task=>{
+							if(!task.data.complete) task.data.complete = true;
+						})
+						this.refreshList()
+						this.pageBack()
+					}else if(mode==='clear'){
+						if(this.listEdit.source.derived){
+							this.listEdit.source.tasks.forEach(task=>{
+								if(task.data.complete) deleteTask(task.data, task.from)
+							})
+						}else
+							removeItem(this.listEdit.source.tasks, task=>task.data.complete)
+						this.pageBack()
+						if(this.listEdit.source.fromSearch) this.searchImmediately()
+						else this.refreshList()
+					}else if(mode==='delete'){
+						let index = this.lists.indexOf(this.listEdit.source)
+						if(index !== -1) this.lists.splice(index,1)				
+						this.selectList('today',false);
+						this.pageBack()					
+					}
+				},
+				toEditTask(task,from){
+					if(task) this.taskEdit.copy = {data: {name: task.name, date: task.date, level: task.level,complete:task.complete}}
+					else 	 this.taskEdit.copy = {data: {name: '' , date: dateString(), level:0 , id:-1, complete:false }}
+					this.taskEdit.copy.from = from || lists[0]
+					this.taskEdit.source = task
+					this.jumpto('page','edit-task')
+				},
+				finishEditTask(task,list){
+					if(this.taskEdit.source){
+						moveTask(this.taskEdit.source, task.from, list)
+						Object.assign(this.taskEdit.source, task.data)						
+					}else {
+						task.data.id = (++this.config.taskIdMax)
+						list.tasks.push({data: task.data})
+					}
+					if(this.currentList===list||this.currentList===task.from) this.refreshList()
+					this.pageBack()
+				},
+				deleteTask(){
+					deleteTask(this.taskEdit.source, this.taskEdit.copy.from)
+					this.pageBack()
+					if(this.taskEdit.copy.from.fromSearch) this.searchImmediately()
+					else this.refreshList()
+				},
+				jumpto(main,submain,only){
+					if(only){
+						this.history.length=0
+						this.history.push({main:only,submain})
+					}else{
+						let changed = false;
+						changed = (main && this.main !== main) || (submain && this.submain !== submain)
+						if(changed) {
+							this.history.push({main: this.main,submain: this.submain})
+						}
+					}
+					if(main)   this.main = main
+					if(submain) this.submain = submain
+				},
+				searchImmediately(){
+					if(!this.searchText){
+						return this.selectList({name: '搜索',icon: 'search',uneditable:true,fromSearch: true} ,true);
+					};
+					this.searchTasks.length = 0;
+					let regSearch = this.searchText.replace(/[\^\$\\\.\*\+\?\{\[\(]/g,'\\$&');
+					let regex =  new RegExp(regSearch, 'i');
+					this.lists.forEach(list => {
+						if(regex.test(list.name))
+							appendTask(list,this.searchTasks)
+						else
+							appendTask(list,this.searchTasks,data => regex.test(data.name))
+					});
+					this.selectList({
+						name: '搜索“' + this.searchText + '”',
+						description: '共找到 ' + this.searchTasks.length + ' 个事项' ,
+						icon: 'search',
+						tasks: this.searchTasks,
+						uneditable:true,
+						derived:true,	
+						fromSearch: true,
+						rep: text=>text.replace(new RegExp(regSearch, 'ig'),'<span class="hl">$&</span>')
+					},true);
+				},
+				search(text){			
+					this.searchText = text;		
+					this.searchTimer.raise();
+				},
+				selectList(list,isSearch){
+					this.curList = list;
+				 	this.jumpto('page','task-list','nav')
+					if(!isSearch && this.searchText) this.searchText = '';
+				},
+				selected(list){
+					return this.currentList === list;
+				}
+			},
+			computed: {
+				currentList(){
+					if(this.curList === 'today') return this.todayList
+					if(this.curList === 'all') return this.allList
+					return this.curList
+				},
+				todayList(){
+					let tasks = [];
+					this.lists.forEach(list => 
+						appendTask(list,tasks,data => daysBetween(parseDate(data.date),parseDate()) === 0)
+					)
+					return {
+						name: '今天',
+						icon: 'time',
+						uneditable:true,
+						derived:true,	
+						tasks
+					}
+				},
+				allList(){
+					let tasks = [];
+					this.lists.forEach(list => 
+						appendTask(list,tasks) 
+					)
+					return {
+						name: '全部待办',
+						icon: 'stats',
+						uneditable:true,
+						derived:true,	
+						incompleteOnly: true,
+						tasks
+					}
+				},
+				rootStyle(){
+					let theme = parseColor(this.config.color);
+					let {r,g,b} = theme;
+					let {h,s,l} = rgbToHsl(theme);
+					let primary = {r:1-(1-r)*0.814,g:1-(1-g)*0.814,b:1-(1-b)*0.814};
+					let primary200 = {r:1-(1-r)*0.1,g:1-(1-g)*0.1,b:1-(1-b)*0.1};
+					let secondary = {h,s: s *0.65,l};
+					let muted = {h,s:0.1,l:0.42};
+					return {
+						'--theme-color' : rgbString(theme),
+						'--primary-color' : rgbString(primary),
+						'--primary-color-20t' : rgbString(primary,0.2),
+						'--primary-color-200' : rgbString(primary200),
+						'--secondary-color' : hslString(secondary),
+						'--muted-color' : hslString(muted)
+					}
+				},
+				colorText() {
+					const reg = /^#[a-f\d]{6}$/i;
+					if(reg.test(this.config.color))
+						return 'is-valid';
+					else
+						return 'is-invalid';
+				}
+			}
+		})
+	</script>
+</body>
+</html>
