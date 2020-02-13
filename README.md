@@ -1,5 +1,5 @@
 # TodoList-demo
-Web课程大作业
+基于node.js+html+vue的任务清单demo
 
 ### 如何使用
 在此项目目录下打开命令行，输入：
